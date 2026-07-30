@@ -114,3 +114,21 @@ export async function createTask(projectId: string, columnId: string, title: str
   if (error) return { error: error.message }
   return { data: task }
 }
+
+export async function updateTaskStatus(taskId: string, newColumnId: string) {
+  const supabase = await createClient()
+
+  // First verify user is authenticated
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  // Check how many tasks are in the target column to append at the end
+  const { count } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact" })
+    .eq("column_id", newColumnId)
+
+  const newPosition = count || 0
+
+  return await updateTaskPosition(taskId, newColumnId, newPosition)
+}

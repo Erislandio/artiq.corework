@@ -118,7 +118,13 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
             <div className="w-full sm:w-52">
               <Select value={selectedOrg} onValueChange={(val) => handleOrgChange(val || "all")}>
                 <SelectTrigger className="bg-white dark:bg-zinc-950">
-                  <SelectValue placeholder="Todos os Clientes" />
+                  <SelectValue placeholder="Todos os Clientes">
+                    {(val: any) => {
+                      if (val === "all") return "Todas as Organizações";
+                      const org = organizations.find((o) => o.id === val);
+                      return org ? org.name : "Todos os Clientes";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas as Organizações</SelectItem>
@@ -133,7 +139,13 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
             <div className="w-full sm:w-52">
               <Select value={selectedProject} onValueChange={(val) => handleProjectChange(val || "all")}>
                 <SelectTrigger className="bg-white dark:bg-zinc-950">
-                  <SelectValue placeholder="Todos os Projetos" />
+                  <SelectValue placeholder="Todos os Projetos">
+                    {(val: any) => {
+                      if (val === "all") return "Todos os Projetos";
+                      const proj = availableProjects.find((p) => p.id === val);
+                      return proj ? proj.name : "Todos os Projetos";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Projetos</SelectItem>

@@ -7,6 +7,7 @@ import {
   DropResult
 } from "@hello-pangea/dnd";
 import { MoreHorizontal, Plus } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -35,9 +36,30 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => {
     setIsMounted(true);
-  }, []);
+
+    const taskId = searchParams.get("taskId");
+    if (taskId && initialColumns) {
+      let foundTask = null;
+      for (const col of initialColumns) {
+        if (col.tasks) {
+          const task = col.tasks.find((t) => t.id === taskId);
+          if (task) {
+            foundTask = task;
+            break;
+          }
+        }
+      }
+      if (foundTask) {
+        setActiveTask(foundTask as unknown as Task);
+      }
+    }
+  }, [initialColumns, searchParams, pathname, router]);
 
   function onDragEnd(result: DropResult) {
     const { destination, source, type, draggableId } = result;
@@ -63,7 +85,6 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
 
       setColumns(updatedColumns);
 
-      // Update position on backend
       updateColumnPosition(draggableId, destination.index);
       return;
     }
@@ -85,7 +106,6 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
         columns.map((col) => (col.id === newColumn.id ? newColumn : col))
       );
 
-      // Update position on backend
       updateTaskPosition(draggableId, finishCol.id, destination.index);
       return;
     }

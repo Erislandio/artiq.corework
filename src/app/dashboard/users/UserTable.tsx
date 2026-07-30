@@ -219,7 +219,23 @@ export function UserTable({
                         }
                       >
                         <SelectTrigger className="w-32 h-8 text-xs font-medium bg-white dark:bg-zinc-950">
-                          <SelectValue />
+                          <SelectValue>
+                            {(val: any) =>
+                              val === "Admin" ? (
+                                <div className="flex items-center gap-1.5 font-medium text-purple-600 dark:text-purple-400">
+                                  <Shield className="w-3.5 h-3.5" />
+                                  Admin
+                                </div>
+                              ) : val === "Member" ? (
+                                <div className="flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-400">
+                                  <UserIcon className="w-3.5 h-3.5" />
+                                  Member
+                                </div>
+                              ) : (
+                                "Role"
+                              )
+                            }
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Admin">

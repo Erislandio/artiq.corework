@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
+import { Suspense } from "react"
 import { KanbanBoard } from "@/features/kanban/components/KanbanBoard"
 import { Column } from "@/types"
 
@@ -33,6 +34,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       )
     `)
     .eq("project_id", id)
+    .eq("tasks.is_archived", false)
     .order("position", { ascending: true })
 
   // Sort tasks by position inside each column since Supabase doesn't guarantee nested ordering directly
@@ -51,7 +53,9 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       </div>
       
       <div className="flex-1 overflow-hidden">
-        <KanbanBoard projectId={project.id} initialColumns={columns} />
+        <Suspense fallback={<div className="p-4 text-zinc-500">Carregando quadro...</div>}>
+          <KanbanBoard projectId={project.id} initialColumns={columns} />
+        </Suspense>
       </div>
     </div>
   )

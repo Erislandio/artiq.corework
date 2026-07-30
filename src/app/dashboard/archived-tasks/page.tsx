@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import { MyTasksClient } from "./MyTasksClient"
+import { ArchivedTasksClient } from "./ArchivedTasksClient"
 
-export default async function MyTasksPage() {
+export default async function ArchivedTasksPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -10,7 +10,8 @@ export default async function MyTasksPage() {
     redirect("/login")
   }
 
-  // Fetch tasks where user is assignee
+  // Fetch all archived tasks where user is assignee or creator
+  // Para simplificar, buscaremos tasks arquivadas das quais o usuário participa
   const { data: assignments, error } = await supabase
     .from("task_assignees")
     .select(`
@@ -22,9 +23,9 @@ export default async function MyTasksPage() {
       )
     `)
     .eq("user_id", user.id)
-    .eq("task.is_archived", false)
+    .eq("task.is_archived", true)
 
   const tasks = assignments?.map(a => a.task).filter(Boolean) || []
 
-  return <MyTasksClient tasks={tasks as any} />
+  return <ArchivedTasksClient tasks={tasks as any} />
 }

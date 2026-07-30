@@ -79,3 +79,23 @@ export async function addManualTime(taskId: string, durationMinutes: number, des
   if (error) return { error: error.message }
   return { success: true }
 }
+
+export async function getTaskTimeLogs(taskId: string) {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from("time_logs")
+    .select(`
+      *,
+      user:users(id, name, avatar)
+    `)
+    .eq("task_id", taskId)
+    .order("start_time", { ascending: false })
+
+  if (error) {
+    console.error("Erro ao buscar time logs da task:", error)
+    return []
+  }
+
+  return data
+}

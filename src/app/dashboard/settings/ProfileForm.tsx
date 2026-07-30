@@ -178,7 +178,15 @@ export function ProfileForm({ user, availableManagers }: ProfileFormProps) {
             <label className="text-sm font-medium">Gerenciado por (Gestor)</label>
             <Select value={managerId} onValueChange={(val) => setManagerId(val || "none")}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione um gestor" />
+                <SelectValue placeholder="Selecione um gestor">
+                  {(val: any) => {
+                    if (val === "none") return "Sem gestor atribuído";
+                    const manager = availableManagers.find((m) => m.id === val);
+                    return manager
+                      ? `${manager.name} (${manager.job_title || manager.email})`
+                      : "Selecione um gestor";
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sem gestor atribuído</SelectItem>

@@ -6,6 +6,8 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { GlobalSearch } from "./GlobalSearch";
+
 import { GlobalTimer } from "./GlobalTimer";
 import { UserNav } from "./UserNav";
 
@@ -18,11 +20,7 @@ export function AppHeader() {
     <header className="flex h-14 items-center gap-4 border-b bg-zinc-50/50 px-6 dark:bg-zinc-950/50">
       <div className="flex flex-1 items-center gap-4">
         <div className="relative w-full max-w-md flex items-center">
-          <Input
-            type="search"
-            placeholder="Buscar projetos, tasks..."
-            className="w-full bg-white shadow-none dark:bg-zinc-900 md:w-[300px] lg:w-[400px]"
-          />
+          <GlobalSearch />
         </div>
       </div>
       <GlobalTimer />

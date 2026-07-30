@@ -131,5 +131,79 @@ export async function toggleAssignee(taskId: string, assigneeId: string, isAssig
     }
   }
   
+  
+  return { success: true }
+}
+
+export async function deleteTask(taskId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  // A exclusão em cascata cuidará de task_assignees, task_comments, etc.
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function archiveTask(taskId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ is_archived: true })
+    .eq("id", taskId)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function unarchiveTask(taskId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ is_archived: false })
+    .eq("id", taskId)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function deleteComment(commentId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  const { error } = await supabase
+    .from("task_comments")
+    .delete()
+    .eq("id", commentId)
+    .eq("user_id", user.id) // garante que só o dono apaga
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function editComment(commentId: string, content: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado." }
+
+  const { error } = await supabase
+    .from("task_comments")
+    .update({ content })
+    .eq("id", commentId)
+    .eq("user_id", user.id) // garante que só o dono edita
+
+  if (error) return { error: error.message }
   return { success: true }
 }
