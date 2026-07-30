@@ -72,7 +72,7 @@ import {
   toggleAssignee,
   updateTaskDetails
 } from "../actions/task-details";
-import { addManualTime, toggleTimer } from "../actions/time-logs";
+import { addManualTime, toggleTimer, deleteTimeLog } from "../actions/time-logs";
 
 interface TaskModalProps {
   task: Task | null;
@@ -268,6 +268,17 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
     if (window.confirm("Deseja remover esta subtarefa?")) {
       await deleteSubtask(subtaskId);
       loadTaskDetails();
+    }
+  };
+
+  const handleDeleteTimeLog = async (logId: string) => {
+    if (window.confirm("Tem certeza que deseja excluir este apontamento de horas? Esta ação não pode ser desfeita.")) {
+      const res = await deleteTimeLog(logId);
+      if (res.error) {
+        setTimerError(res.error);
+      } else {
+        loadTaskDetails();
+      }
     }
   };
 
@@ -913,15 +924,20 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                                         )}
                                       </p>
                                     </div>
-                                    <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md text-xs font-mono font-medium">
-                                      <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                                      {log.duration_minutes ? (
-                                        `${Math.floor(log.duration_minutes / 60)}h ${log.duration_minutes % 60}m`
-                                      ) : (
-                                        <span className="text-orange-500 animate-pulse">
-                                          Rodando...
-                                        </span>
-                                      )}
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md text-xs font-mono font-medium">
+                                        <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                                        {`${Math.floor(log.duration_minutes / 60)}h ${log.duration_minutes % 60}m`}
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
+                                        onClick={() => handleDeleteTimeLog(log.id)}
+                                        title="Excluir apontamento"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
                                     </div>
                                   </div>
                                   {log.description && (

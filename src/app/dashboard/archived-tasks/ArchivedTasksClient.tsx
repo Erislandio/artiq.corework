@@ -1,9 +1,13 @@
 "use client";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { TaskModal } from "@/features/kanban/components/TaskModal";
+import { deleteTask } from "@/features/kanban/actions/task-details";
 import { Task } from "@/types";
+import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface ArchivedTasksClientProps {
@@ -12,6 +16,15 @@ interface ArchivedTasksClientProps {
 
 export function ArchivedTasksClient({ tasks }: ArchivedTasksClientProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const router = useRouter();
+
+  const handleDeleteTask = async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    if (window.confirm("Deseja realmente excluir esta tarefa permanentemente?")) {
+      await deleteTask(taskId);
+      router.refresh();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -40,9 +53,20 @@ export function ArchivedTasksClient({ tasks }: ArchivedTasksClientProps) {
                     <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
                       {(task as any).project?.name || "Projeto"}
                     </span>
-                    <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                      Arquivada
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        Arquivada
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 -mr-1"
+                        onClick={(e) => handleDeleteTask(e, task.id)}
+                        title="Excluir tarefa"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <p className="font-semibold line-through decoration-zinc-300 dark:decoration-zinc-700">{task.title}</p>
                 </div>

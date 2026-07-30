@@ -102,3 +102,17 @@ export async function getTaskTimeLogs(taskId: string) {
 
   return data
 }
+
+export async function deleteTimeLog(logId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado" }
+
+  const { error } = await supabase
+    .from("time_logs")
+    .delete()
+    .eq("id", logId)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
