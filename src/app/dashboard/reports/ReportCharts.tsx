@@ -45,6 +45,7 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
   const [selectedProject, setSelectedProject] = useState<string>("all")
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
+  const [durationUnit, setDurationUnit] = useState<"min" | "h" | "d">("h")
   
   // States para busca e paginação
   const [searchTable, setSearchTable] = useState("")
@@ -83,16 +84,23 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
   const exportToCSV = () => {
     if (!data.logs || data.logs.length === 0) return
 
-    const headers = ["Data", "Organização (Cliente)", "Projeto", "Task", "Usuário", "Duração (Horas)", "Descrição"]
-    const rows = data.logs.map(l => [
-      new Date(l.date).toLocaleDateString("pt-BR"),
-      `"${l.organization.replace(/"/g, '""')}"`,
-      `"${l.project.replace(/"/g, '""')}"`,
-      `"${l.task.replace(/"/g, '""')}"`,
-      `"${l.user.replace(/"/g, '""')}"`,
-      l.durationHours,
-      `"${l.description.replace(/"/g, '""')}"`
-    ])
+    const unitLabel = durationUnit === "min" ? "Minutos" : durationUnit === "h" ? "Horas" : "Dias"
+    const headers = ["Data", "Organização (Cliente)", "Projeto", "Task", "Usuário", `Duração (${unitLabel})`, "Descrição"]
+    const rows = data.logs.map(l => {
+      let dur = l.durationHours;
+      if (durationUnit === "min") dur = Math.round(dur * 60);
+      else if (durationUnit === "d") dur = Number((dur / 8).toFixed(2));
+      
+      return [
+        new Date(l.date).toLocaleDateString("pt-BR"),
+        `"${l.organization.replace(/"/g, '""')}"`,
+        `"${l.project.replace(/"/g, '""')}"`,
+        `"${l.task.replace(/"/g, '""')}"`,
+        `"${l.user.replace(/"/g, '""')}"`,
+        dur,
+        `"${l.description.replace(/"/g, '""')}"`
+      ]
+    })
 
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n")
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
@@ -171,15 +179,28 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
             </div>
           </div>
 
-          <Button 
-            onClick={exportToCSV} 
-            variant="default"
-            className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
-            disabled={data.logs.length === 0}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Exportar Relatório (CSV)
-          </Button>
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            <Select value={durationUnit} onValueChange={(val: any) => setDurationUnit(val)}>
+              <SelectTrigger className="w-full md:w-32 bg-white dark:bg-zinc-950">
+                <SelectValue placeholder="Unidade" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="min">Minutos</SelectItem>
+                <SelectItem value="h">Horas</SelectItem>
+                <SelectItem value="d">Dias</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button 
+              onClick={exportToCSV} 
+              variant="default"
+              className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={data.logs.length === 0}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Exportar Relatório (CSV)
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -309,7 +330,9 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
                   <th className="px-4 py-3">Projeto</th>
                   <th className="px-4 py-3">Task</th>
                   <th className="px-4 py-3">Usuário</th>
-                  <th className="px-4 py-3">Duração</th>
+                  <th className="px-4 py-3">
+                    Duração ({durationUnit === "min" ? "min" : durationUnit === "h" ? "h" : "d"})
+                  </th>
                   <th className="px-4 py-3">Descrição</th>
                 </tr>
               </thead>
@@ -337,7 +360,9 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
                         {log.user}
                       </td>
                       <td className="px-4 py-3 font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                        {log.durationHours}h
+                        {durationUnit === "min" && `${Math.round(log.durationHours * 60)} min`}
+                        {durationUnit === "h" && `${log.durationHours.toFixed(2)}h`}
+                        {durationUnit === "d" && `${(log.durationHours / 8).toFixed(2)}d`}
                       </td>
                       <td className="px-4 py-3 text-zinc-500 max-w-xs truncate">
                         {log.description}

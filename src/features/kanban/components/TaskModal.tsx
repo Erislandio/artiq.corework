@@ -6,6 +6,7 @@ import {
   AlignLeft,
   Archive,
   Check,
+  CheckSquare,
   Clock,
   History,
   MessageSquare,
@@ -58,6 +59,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Task, User } from "@/types";
 import { updateTaskStatus } from "../actions/kanban";
 import {
+  createSubtask,
+  deleteSubtask,
+  toggleSubtask
+} from "../actions/subtasks";
+import {
   addComment,
   archiveTask,
   deleteComment,
@@ -76,9 +82,11 @@ interface TaskModalProps {
 
 export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerError, setTimerError] = useState<string | null>(null);
+  const [activeTimerSubtaskId, setActiveTimerSubtaskId] = useState<
+    string | null
+  >(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Detalhes estendidos
@@ -87,7 +95,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const [projectColumns, setProjectColumns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "comments" | "timelogs" | "attachments" | "history"
+    "comments" | "timelogs" | "attachments" | "history" | "subtasks"
   >("comments");
 
   // States de edição
@@ -101,6 +109,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const [showManualTime, setShowManualTime] = useState(false);
   const [manualTimeValue, setManualTimeValue] = useState("");
   const [manualTimeDescription, setManualTimeDescription] = useState("");
+  const [activeSubtaskIdForTime, setActiveSubtaskIdForTime] = useState<
+    string | undefined
+  >(undefined);
+
+  const [newSubtask, setNewSubtask] = useState("");
   const [timerDescription, setTimerDescription] = useState("");
 
   const [user, setUser] = useState<User | null>(null);
@@ -147,9 +160,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
         *,
         creator:users!tasks_creator_id_fkey(*),
         assignees:task_assignees(user:users(*)),
-        comments:task_comments(*, user:users(*)),
+        comments:task_comments(*, user:users(id, name, avatar)),
         attachments:task_attachments(*),
-        time_logs(*, user:users(id, name, avatar))
+        subtasks:subtasks(*),
+        time_logs:time_logs(
+          *, user:users(id, name, avatar))
       `
       )
       .eq("id", task.id)
@@ -178,6 +193,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
         );
         if (activeTimer) {
           setIsTimerRunning(true);
+          setActiveTimerSubtaskId(activeTimer.subtask_id || null);
           const elapsed = Math.floor(
             (new Date().getTime() -
               new Date(activeTimer.start_time).getTime()) /
@@ -186,6 +202,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
           setTimerSeconds(elapsed);
         } else {
           setIsTimerRunning(false);
+          setActiveTimerSubtaskId(null);
           setTimerSeconds(0);
         }
       }
@@ -227,15 +244,59 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
   if (!task) return null;
 
-  const handleToggleTimer = async () => {
+  const handleCreateSubtask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubtask.trim()) return;
+    const { success, error } = await createSubtask(task.id, newSubtask);
+    if (success) {
+      setNewSubtask("");
+      loadTaskDetails();
+    } else {
+      alert(error);
+    }
+  };
+
+  const handleToggleSubtask = async (
+    subtaskId: string,
+    currentStatus: boolean
+  ) => {
+    await toggleSubtask(subtaskId, !currentStatus);
+    loadTaskDetails();
+  };
+
+  const handleDeleteSubtask = async (subtaskId: string) => {
+    if (window.confirm("Deseja remover esta subtarefa?")) {
+      await deleteSubtask(subtaskId);
+      loadTaskDetails();
+    }
+  };
+
+  const handleToggleTimer = async (
+    taskIdArg: string = task.id,
+    subtaskId?: string
+  ) => {
     setTimerError(null);
-    const res = await toggleTimer(task.id, timerDescription);
+    const resolvedSubtaskId =
+      subtaskId !== undefined ? subtaskId : activeTimerSubtaskId || undefined;
+    const subTask = detailedTask?.subtasks?.find(
+      (st: any) => st.id === resolvedSubtaskId
+    );
+    const res = await toggleTimer(
+      taskIdArg,
+      subTask?.title ?? timerDescription,
+      resolvedSubtaskId
+    );
 
     if (res?.error) {
       setTimerError(res.error);
     } else {
-      setIsTimerRunning(res.status === "started");
-      if (res.status === "stopped") {
+      if (res.status === "started") {
+        setIsTimerRunning(true);
+        setActiveTimerSubtaskId(resolvedSubtaskId || null);
+        setTimerSeconds(0);
+      } else if (res.status === "stopped") {
+        setIsTimerRunning(false);
+        setActiveTimerSubtaskId(null);
         setTimerSeconds(0);
         loadTaskDetails(); // Recarregar para mostrar no histórico
       }
@@ -247,6 +308,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
     setIsSavingDesc(true);
     await updateTaskDetails(task.id, { description });
     setIsSavingDesc(false);
+  };
+
+  const handleUpdateCreator = async (creatorId: string) => {
+    await updateTaskDetails(task.id, { creator_id: creatorId });
+    loadTaskDetails();
   };
 
   const handleUpdatePriority = async (val: string) => {
@@ -262,6 +328,14 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
       await updateTaskDetails(task.id, { story_points: val });
       setDetailedTask({ ...detailedTask, story_points: val });
     }
+  };
+
+  const handleUpdateDueDate = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const val = e.target.value;
+    await updateTaskDetails(task.id, { due_date: val });
+    setDetailedTask({ ...detailedTask, due_date: val });
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
@@ -336,18 +410,70 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
     }
   };
 
+  const handleDeleteAttachment = async (
+    attachmentId: string,
+    fileUrl: string
+  ) => {
+    if (!window.confirm("Tem certeza que deseja excluir este anexo?")) return;
+
+    // Extrair o nome do arquivo da URL pública
+    // Ex: .../storage/v1/object/public/attachments/task_id/123_file.png
+    const fileNameMatch = fileUrl.match(/attachments\/(.+)$/);
+    if (fileNameMatch) {
+      const fileName = fileNameMatch[1];
+      await supabase.storage.from("attachments").remove([fileName]);
+    }
+
+    await supabase.from("task_attachments").delete().eq("id", attachmentId);
+    loadTaskDetails();
+  };
+
+  const parseManualTime = (input: string): number => {
+    if (!input) return 0;
+
+    const numericOnly = parseInt(input.trim(), 10);
+    if (!isNaN(numericOnly) && /^\d+$/.test(input.trim())) {
+      return numericOnly;
+    }
+
+    let totalMinutes = 0;
+    const regex = /(\d+)\s*([a-zA-Z]+)/g;
+    let match;
+
+    while ((match = regex.exec(input)) !== null) {
+      const value = parseInt(match[1], 10);
+      const unit = match[2].toLowerCase();
+
+      if (unit.startsWith("d")) {
+        totalMinutes += value * 8 * 60; // 1 day = 8 hours
+      } else if (unit.startsWith("h")) {
+        totalMinutes += value * 60;
+      } else if (unit.startsWith("m")) {
+        totalMinutes += value;
+      }
+    }
+
+    return totalMinutes;
+  };
+
   const handleSubmitManualTime = async () => {
-    const min = parseInt(manualTimeValue);
-    if (!isNaN(min) && min > 0) {
+    const min = parseManualTime(manualTimeValue);
+    if (min > 0) {
       await addManualTime(
         task.id,
         min,
-        manualTimeDescription || "Horas adicionadas manualmente"
+        manualTimeDescription || "Horas adicionadas manualmente",
+        activeSubtaskIdForTime
       );
       setManualTimeValue("");
       setManualTimeDescription("");
       setShowManualTime(false);
+      setActiveSubtaskIdForTime(undefined);
       loadTaskDetails();
+    } else {
+      alert(
+        "Formato de tempo inválido. Use ex: 1d 2h 30m ou apenas minutos (ex: 120)."
+      );
     }
   };
 
@@ -481,6 +607,149 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     )}
                   </div>
                 </div>
+
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 font-semibold mb-2">
+                    <CheckSquare className="w-5 h-5" />
+                    Subtarefas
+                  </div>
+
+                  {detailedTask.subtasks &&
+                    detailedTask.subtasks.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
+                          <span>Progresso</span>
+                          <span>
+                            {Math.round(
+                              (detailedTask.subtasks.filter(
+                                (st: any) => st.is_completed
+                              ).length /
+                                detailedTask.subtasks.length) *
+                                100
+                            )}
+                            %
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-zinc-900 dark:bg-zinc-100 transition-all duration-500"
+                            style={{
+                              width: `${Math.round(
+                                (detailedTask.subtasks.filter(
+                                  (st: any) => st.is_completed
+                                ).length /
+                                  detailedTask.subtasks.length) *
+                                  100
+                              )}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                  <div className="space-y-2">
+                    {detailedTask.subtasks
+                      ?.sort(
+                        (a: any, b: any) =>
+                          new Date(a.created_at).getTime() -
+                          new Date(b.created_at).getTime()
+                      )
+                      .map((subtask: any) => (
+                        <div
+                          key={subtask.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border group transition-colors ${subtask.is_completed ? "bg-zinc-50 dark:bg-zinc-900/50" : "bg-white dark:bg-zinc-900 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <button
+                              onClick={() =>
+                                handleToggleSubtask(
+                                  subtask.id,
+                                  subtask.is_completed
+                                )
+                              }
+                              className={`w-5 h-5 rounded flex items-center justify-center border shrink-0 transition-colors ${subtask.is_completed ? "bg-zinc-900 border-zinc-900 text-white dark:bg-zinc-100 dark:border-zinc-100 dark:text-zinc-900" : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600"}`}
+                            >
+                              {subtask.is_completed && (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <span
+                              className={`text-sm truncate font-medium ${subtask.is_completed ? "line-through text-zinc-400 dark:text-zinc-600" : "text-zinc-700 dark:text-zinc-300"}`}
+                            >
+                              {subtask.title}
+                            </span>
+                          </div>
+
+                          <div
+                            className={`flex items-center gap-1 transition-opacity ${isTimerRunning && activeTimerSubtaskId === subtask.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-7 w-7 transition-colors ${
+                                isTimerRunning &&
+                                activeTimerSubtaskId === subtask.id
+                                  ? "text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 dark:hover:bg-red-900/50"
+                                  : "text-zinc-400 hover:text-green-600 hover:bg-green-50 dark:hover:text-green-400 dark:hover:bg-green-950/50"
+                              }`}
+                              onClick={() =>
+                                handleToggleTimer(task.id, subtask.id)
+                              }
+                              title={
+                                isTimerRunning &&
+                                activeTimerSubtaskId === subtask.id
+                                  ? "Parar Timer da subtarefa"
+                                  : "Iniciar Timer para subtarefa"
+                              }
+                            >
+                              {isTimerRunning &&
+                              activeTimerSubtaskId === subtask.id ? (
+                                <Square className="w-3.5 h-3.5 fill-current" />
+                              ) : (
+                                <Play className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
+                              onClick={() => {
+                                setActiveSubtaskIdForTime(subtask.id);
+                                setShowManualTime(true);
+                              }}
+                              title="Adicionar Horas Manualmente"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50"
+                              onClick={() => handleDeleteSubtask(subtask.id)}
+                              title="Excluir subtarefa"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <form
+                    onSubmit={handleCreateSubtask}
+                    className="flex gap-2 pt-2"
+                  >
+                    <Input
+                      placeholder="Adicionar nova subtarefa..."
+                      value={newSubtask}
+                      onChange={(e) => setNewSubtask(e.target.value)}
+                      className="h-9 bg-white dark:bg-zinc-950"
+                    />
+                    <Button type="submit" size="sm" className="h-9 shrink-0">
+                      Adicionar
+                    </Button>
+                  </form>
+                </div>
                 {/* Tabs Navigation */}
                 <div className="flex items-center gap-6 border-b border-zinc-200 dark:border-zinc-800">
                   <button
@@ -489,6 +758,9 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                   >
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-4 h-4" /> Comentários
+                      <span className="text-xs text-zinc-500 dark:text-zinc-300 rounded-full w-6 h-6 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
+                        {detailedTask.comments?.length ?? 0}
+                      </span>
                     </div>
                     {activeTab === "comments" && (
                       <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
@@ -511,11 +783,15 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                   >
                     <div className="flex items-center gap-2">
                       <Paperclip className="w-4 h-4" /> Anexos
+                      <span className="text-xs text-zinc-500 dark:text-zinc-300 rounded-full w-6 h-6 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
+                        {detailedTask.attachments?.length ?? 0}
+                      </span>
                     </div>
                     {activeTab === "attachments" && (
                       <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
                     )}
                   </button>
+
                   <button
                     onClick={() => setActiveTab("history")}
                     className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === "history" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
@@ -560,18 +836,31 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                       {detailedTask.attachments?.length > 0 ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {detailedTask.attachments.map((att: any) => (
-                            <a
-                              key={att.id}
-                              href={att.file_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center p-3 rounded-lg border bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                            >
-                              <Paperclip className="w-4 h-4 mr-2 text-zinc-400" />
-                              <span className="text-sm truncate font-medium">
-                                {att.file_name}
-                              </span>
-                            </a>
+                            <div key={att.id} className="relative group">
+                              <a
+                                href={att.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center p-3 pr-10 rounded-lg border bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                              >
+                                <Paperclip className="w-4 h-4 mr-2 text-zinc-400 shrink-0" />
+                                <span className="text-sm truncate font-medium">
+                                  {att.file_name}
+                                </span>
+                              </a>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  handleDeleteAttachment(att.id, att.file_url);
+                                }}
+                                title="Excluir anexo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           ))}
                         </div>
                       ) : (
@@ -639,6 +928,14 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                                     <p className="text-sm mt-2 text-zinc-600 dark:text-zinc-400 italic">
                                       "{log.description}"
                                     </p>
+                                  )}
+                                  {log.subtask_id && (
+                                    <div className="mt-2 inline-flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 px-2 py-0.5 rounded-md text-xs font-medium">
+                                      <CheckSquare className="w-3 h-3" />
+                                      {detailedTask.subtasks?.find(
+                                        (s: any) => s.id === log.subtask_id
+                                      )?.title || "Subtarefa removida"}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -846,18 +1143,38 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                 </Select>
               </div>
 
-              <div>
-                <span className="text-xs text-zinc-500 mb-1 block">
-                  Story Points
-                </span>
-                <Input
-                  type="number"
-                  min="0"
-                  defaultValue={detailedTask?.story_points || ""}
-                  onBlur={handleUpdateStoryPoints}
-                  className="bg-white dark:bg-zinc-950"
-                  placeholder="Ex: 5"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs text-zinc-500 mb-1 block">
+                    Story Points
+                  </span>
+                  <Input
+                    key={detailedTask?.story_points || "sp-empty"}
+                    type="number"
+                    min="0"
+                    defaultValue={detailedTask?.story_points || ""}
+                    onBlur={handleUpdateStoryPoints}
+                    className="bg-white dark:bg-zinc-950"
+                    placeholder="Ex: 5"
+                  />
+                </div>
+
+                <div>
+                  <span className="text-xs text-zinc-500 mb-1 block">
+                    Data Limite
+                  </span>
+                  <Input
+                    key={detailedTask?.due_date || "date-empty"}
+                    type="date"
+                    defaultValue={
+                      detailedTask?.due_date
+                        ? detailedTask.due_date.substring(0, 10)
+                        : ""
+                    }
+                    onBlur={handleUpdateDueDate}
+                    className="bg-white dark:bg-zinc-950"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -870,7 +1187,50 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
             <div className="space-y-3">
               <div>
-                <span className="text-xs text-zinc-500 mb-1 block">Autor</span>
+                <span className="text-xs text-zinc-500 mb-1 block flex items-center justify-between">
+                  Autor
+                  <Popover>
+                    <PopoverTrigger className="h-5 w-5 rounded-full inline-flex items-center justify-center text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
+                      <UserPlus className="w-3 h-3" />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0" align="end">
+                      <Command>
+                        <CommandInput placeholder="Buscar membro..." />
+                        <CommandList>
+                          <CommandEmpty>Nenhum membro encontrado.</CommandEmpty>
+                          <CommandGroup>
+                            {projectMembers.map((member) => (
+                              <CommandItem
+                                key={member.id}
+                                value={member.name}
+                                onSelect={() => handleUpdateCreator(member.id)}
+                                className="flex items-center gap-2 cursor-pointer"
+                              >
+                                <Avatar className="w-6 h-6">
+                                  {member.avatar && (
+                                    <AvatarImage
+                                      src={member.avatar}
+                                      alt={member.name}
+                                    />
+                                  )}
+                                  <AvatarFallback>
+                                    {member.name.charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="flex-1 text-sm">
+                                  {member.name}
+                                </span>
+                                {detailedTask?.creator_id === member.id && (
+                                  <Check className="w-4 h-4 text-zinc-900 dark:text-zinc-100" />
+                                )}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </span>
                 <div className="flex items-center gap-2">
                   <Avatar className="w-6 h-6">
                     {detailedTask?.creator?.avatar && (
@@ -1012,7 +1372,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                 <Button
                   size="lg"
                   variant={isTimerRunning ? "destructive" : "default"}
-                  onClick={handleToggleTimer}
+                  onClick={() => handleToggleTimer()}
                   className="rounded-full w-14 h-14 p-0 shadow-lg"
                   disabled={!isAssignedToMe}
                 >
@@ -1026,7 +1386,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                   <Button
                     size="lg"
                     variant="outline"
-                    onClick={handleToggleTimer}
+                    onClick={() => handleToggleTimer()}
                     className="rounded-full w-14 h-14 p-0 shadow-sm border-zinc-300 dark:border-zinc-700"
                   >
                     <Square className="w-5 h-5 fill-current text-zinc-500" />
@@ -1043,12 +1403,32 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
             {showManualTime ? (
               <div className="p-3 bg-white dark:bg-zinc-950 border rounded-lg space-y-3 animate-in fade-in zoom-in-95">
                 <div className="space-y-1">
-                  <span className="text-xs font-medium text-zinc-500">
-                    Minutos trabalhados:
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-zinc-500">
+                      {activeSubtaskIdForTime ? (
+                        <>
+                          Tempo em:{" "}
+                          <strong className="text-zinc-700 dark:text-zinc-300">
+                            {
+                              detailedTask.subtasks?.find(
+                                (s: any) => s.id === activeSubtaskIdForTime
+                              )?.title
+                            }
+                          </strong>
+                        </>
+                      ) : (
+                        "Tempo trabalhado:"
+                      )}
+                    </span>
+                    {manualTimeValue && (
+                      <span className="text-[10px] text-zinc-400 font-medium">
+                        = {parseManualTime(manualTimeValue)} min
+                      </span>
+                    )}
+                  </div>
                   <Input
-                    type="number"
-                    placeholder="Ex: 120"
+                    type="text"
+                    placeholder="Ex: 1d 2h 30m ou 120"
                     value={manualTimeValue}
                     onChange={(e) => setManualTimeValue(e.target.value)}
                     className="h-8 text-sm"
@@ -1065,15 +1445,16 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     className="h-8 text-sm"
                   />
                 </div>
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-1 flex-col">
                   <Button
-                    variant="ghost"
+                    variant="destructive"
                     size="sm"
                     className="w-full text-xs text-zinc-400 h-8"
                     onClick={() => {
                       setShowManualTime(false);
                       setManualTimeValue("");
                       setManualTimeDescription("");
+                      setActiveSubtaskIdForTime(undefined);
                     }}
                   >
                     Cancelar

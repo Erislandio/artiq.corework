@@ -6,7 +6,9 @@ import {
   Droppable,
   DropResult
 } from "@hello-pangea/dnd";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -18,8 +20,11 @@ import { Column, Task } from "@/types";
 import {
   createColumn,
   createTask,
-  updateColumnPosition,
-  updateTaskPosition
+  deleteColumn,
+  updateColumnsPositions,
+  updateColumnTitle,
+  updateTaskPosition,
+  updateTasksPositions
 } from "../actions/kanban";
 import { TaskModal } from "./TaskModal";
 
@@ -35,6 +40,9 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
   const [addingTaskToCol, setAddingTaskToCol] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const [editColumnTitle, setEditColumnTitle] = useState("");
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -85,7 +93,9 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
 
       setColumns(updatedColumns);
 
-      updateColumnPosition(draggableId, destination.index);
+      updateColumnsPositions(
+        updatedColumns.map((col) => ({ id: col.id, position: col.position }))
+      );
       return;
     }
 
@@ -104,6 +114,14 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
       const newColumn = { ...startCol, tasks: updatedTasks };
       setColumns(
         columns.map((col) => (col.id === newColumn.id ? newColumn : col))
+      );
+
+      updateTasksPositions(
+        updatedTasks.map((t) => ({
+          id: t.id,
+          position: t.position,
+          column_id: finishCol.id
+        }))
       );
 
       updateTaskPosition(draggableId, finishCol.id, destination.index);
@@ -134,7 +152,19 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
       })
     );
 
-    // Update position on backend
+    updateTasksPositions([
+      ...updatedStartTasks.map((t) => ({
+        id: t.id,
+        position: t.position,
+        column_id: startCol.id
+      })),
+      ...updatedFinishTasks.map((t) => ({
+        id: t.id,
+        position: t.position,
+        column_id: finishCol.id
+      }))
+    ]);
+
     updateTaskPosition(draggableId, finishCol.id, destination.index);
   }
 
@@ -181,6 +211,48 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
     setAddingTaskToCol(null);
   }
 
+  async function handleDeleteColumn(
+    columnId: string,
+    columnTitle: string,
+    taskCount: number
+  ) {
+    if (taskCount > 0) {
+      alert(
+        `Não é possível excluir a coluna "${columnTitle}" porque ela contém ${taskCount} tarefa(s). Mova as tarefas primeiro.`
+      );
+      return;
+    }
+
+    if (confirm(`Tem certeza que deseja excluir a coluna "${columnTitle}"?`)) {
+      const { error } = await deleteColumn(columnId);
+      if (error) {
+        alert(error);
+      } else {
+        setColumns(columns.filter((c) => c.id !== columnId));
+      }
+    }
+  }
+
+  async function handleRenameColumn(columnId: string) {
+    if (!editColumnTitle.trim()) {
+      setEditingColumnId(null);
+      return;
+    }
+
+    const { error } = await updateColumnTitle(columnId, editColumnTitle);
+    if (error) {
+      alert(error);
+    } else {
+      setColumns(
+        columns.map((col) =>
+          col.id === columnId ? { ...col, title: editColumnTitle } : col
+        )
+      );
+    }
+    setEditingColumnId(null);
+    setEditColumnTitle("");
+  }
+
   if (!isMounted) return null;
 
   return (
@@ -202,12 +274,61 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
                   >
                     <div
                       {...provided.dragHandleProps}
-                      className="mb-3 flex items-center justify-between font-medium"
+                      className="mb-3 flex items-center justify-between font-medium group min-h-[32px]"
                     >
-                      <h3 className="text-sm font-semibold">{column.title}</h3>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      {editingColumnId === column.id ? (
+                        <div className="flex w-full items-center gap-2">
+                          <Input
+                            autoFocus
+                            value={editColumnTitle}
+                            onChange={(e) => setEditColumnTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleRenameColumn(column.id);
+                              } else if (e.key === "Escape") {
+                                setEditingColumnId(null);
+                              }
+                            }}
+                            onBlur={() => handleRenameColumn(column.id)}
+                            className="h-7 text-sm font-semibold px-2 py-1"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="text-sm font-semibold">
+                            {column.title}
+                          </h3>
+                          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                              onClick={() => {
+                                setEditingColumnId(column.id);
+                                setEditColumnTitle(column.title);
+                              }}
+                              title="Renomear coluna"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-zinc-400 hover:text-red-500"
+                              onClick={() =>
+                                handleDeleteColumn(
+                                  column.id,
+                                  column.title,
+                                  column.tasks?.length || 0
+                                )
+                              }
+                              title="Excluir coluna"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <Droppable droppableId={column.id} type="task">
@@ -232,8 +353,12 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
                                   className="cursor-grab bg-white shadow-sm dark:bg-zinc-900 active:cursor-grabbing hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
                                 >
                                   <CardContent className=" space-y-3">
-                                    <p className="text-sm font-medium leading-tight">
+                                    <p className="text-base font-medium leading-tight">
                                       {task.title}
+                                    </p>
+
+                                    <p className="text-xs font-medium leading-tight">
+                                      {`${task.description ? task.description.slice(0, 50) + "..." : "Sem descrição"}`}
                                     </p>
 
                                     <div className="flex items-center justify-between pt-1">
@@ -248,6 +373,31 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
                                             {task.story_points} pts
                                           </span>
                                         )}
+                                        {task.due_date &&
+                                          (() => {
+                                            const dueDateStr =
+                                              task.due_date.includes("T")
+                                                ? task.due_date
+                                                : `${task.due_date}T12:00:00`;
+                                            const dueDate = new Date(
+                                              dueDateStr
+                                            );
+                                            const today = new Date();
+                                            today.setHours(0, 0, 0, 0);
+                                            dueDate.setHours(0, 0, 0, 0);
+                                            const isDelayed = dueDate < today;
+
+                                            return (
+                                              <span
+                                                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${isDelayed ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"}`}
+                                              >
+                                                <Calendar className="w-3 h-3" />
+                                                {format(dueDate, "dd/MM", {
+                                                  locale: ptBR
+                                                })}
+                                              </span>
+                                            );
+                                          })()}
                                       </div>
 
                                       {/* Responsáveis */}
@@ -332,7 +482,7 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
                   placeholder="Nova Coluna"
                   value={newColumnTitle}
                   onChange={(e) => setNewColumnTitle(e.target.value)}
-                  className="bg-white/50 dark:bg-zinc-900/50"
+                  className="bg-white/50 dark:bg-zinc-900/50 mt-0"
                 />
                 <Button
                   type="submit"

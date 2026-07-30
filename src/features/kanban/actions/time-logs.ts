@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 
-export async function toggleTimer(taskId: string, description?: string) {
+export async function toggleTimer(taskId: string, description?: string, subtaskId?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado." }
@@ -20,7 +20,7 @@ export async function toggleTimer(taskId: string, description?: string) {
 
   // If there's an active timer...
   if (activeLog) {
-    if (activeLog.task_id === taskId) {
+    if (activeLog.task_id === taskId && (activeLog.subtask_id === subtaskId || (!activeLog.subtask_id && !subtaskId))) {
       // Stopping the current timer
       const endTime = new Date().toISOString()
       const start = new Date(activeLog.start_time).getTime()
@@ -38,7 +38,7 @@ export async function toggleTimer(taskId: string, description?: string) {
       if (updateError) return { error: updateError.message }
       return { success: true, status: "stopped", duration }
     } else {
-      return { error: "Você já possui um timer rodando em outra task. Pare-o primeiro." }
+      return { error: "Você já possui um timer rodando em outra task ou subtarefa. Pare-o primeiro." }
     }
   } else {
     // Starting a new timer
@@ -46,6 +46,7 @@ export async function toggleTimer(taskId: string, description?: string) {
       .from("time_logs")
       .insert({
         task_id: taskId,
+        subtask_id: subtaskId || null,
         user_id: user.id,
         is_timer: true,
         start_time: new Date().toISOString(),
@@ -57,7 +58,7 @@ export async function toggleTimer(taskId: string, description?: string) {
   }
 }
 
-export async function addManualTime(taskId: string, durationMinutes: number, description: string) {
+export async function addManualTime(taskId: string, durationMinutes: number, description: string, subtaskId?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado." }
@@ -69,6 +70,7 @@ export async function addManualTime(taskId: string, durationMinutes: number, des
     .from("time_logs")
     .insert({
       task_id: taskId,
+      subtask_id: subtaskId || null,
       user_id: user.id,
       is_timer: false,
       start_time: startTime.toISOString(),

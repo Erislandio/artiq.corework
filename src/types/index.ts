@@ -49,4 +49,13 @@ export interface Task {
   // Relacionamentos aninhados (carregados via query)
   creator?: User;
   assignees?: { user: User }[];
+  subtasks?: Subtask[];
+}
+
+export interface Subtask {
+  id: string;
+  task_id: string;
+  title: string;
+  is_completed: boolean;
+  created_at: string;
 }
