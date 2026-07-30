@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getReportData } from "@/features/reports/actions/get-reports"
-import { Download, Filter, Clock, FileText, CheckCircle, Users, Building2, FolderKanban } from "lucide-react"
+import { Download, Filter, Clock, FileText, CheckCircle, Users, Building2, FolderKanban, ChevronLeft, ChevronRight } from "lucide-react"
 
 interface OrganizationOption {
   id: string
@@ -45,7 +45,11 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
   const [selectedProject, setSelectedProject] = useState<string>("all")
   const [data, setData] = useState(initialData)
   const [loading, setLoading] = useState(false)
+  
+  // States para busca e paginação
   const [searchTable, setSearchTable] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   // Filter projects dropdown dynamically based on selected organization
   const availableProjects = selectedOrg === "all"
@@ -55,6 +59,7 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
   const handleOrgChange = async (orgId: string) => {
     setSelectedOrg(orgId)
     setSelectedProject("all")
+    setCurrentPage(1)
     setLoading(true)
     const newData = await getReportData({ organizationId: orgId, projectId: "all" })
     setData(newData)
@@ -63,10 +68,16 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
 
   const handleProjectChange = async (projId: string) => {
     setSelectedProject(projId)
+    setCurrentPage(1)
     setLoading(true)
     const newData = await getReportData({ organizationId: selectedOrg, projectId: projId })
     setData(newData)
     setLoading(false)
+  }
+
+  const handleSearchChange = (val: string) => {
+    setSearchTable(val)
+    setCurrentPage(1)
   }
 
   const exportToCSV = () => {
@@ -101,6 +112,9 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
     l.project.toLowerCase().includes(searchTable.toLowerCase()) ||
     l.description.toLowerCase().includes(searchTable.toLowerCase())
   )
+
+  const totalPages = Math.ceil(filteredLogsTable.length / itemsPerPage)
+  const currentLogs = filteredLogsTable.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   return (
     <div className="space-y-6">
@@ -281,7 +295,7 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
           <Input 
             placeholder="Buscar registro..." 
             value={searchTable}
-            onChange={e => setSearchTable(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             className="w-64 text-sm"
           />
         </CardHeader>
@@ -300,12 +314,12 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {filteredLogsTable.length === 0 ? (
+                {currentLogs.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-zinc-400">Nenhum apontamento encontrado</td>
                   </tr>
                 ) : (
-                  filteredLogsTable.map(log => (
+                  currentLogs.map(log => (
                     <tr key={log.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30">
                       <td className="px-4 py-3 text-zinc-500 whitespace-nowrap">
                         {new Date(log.date).toLocaleDateString("pt-BR")}
@@ -334,6 +348,38 @@ export function ReportCharts({ initialData, organizations, projects }: ReportCha
               </tbody>
             </table>
           </div>
+
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-4 border-t dark:border-zinc-800">
+              <div className="text-sm text-zinc-500">
+                Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredLogsTable.length)} de {filteredLogsTable.length} resultados
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Anterior
+                </Button>
+                <div className="text-sm font-medium px-2">
+                  Página {currentPage} de {totalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

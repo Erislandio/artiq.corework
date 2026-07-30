@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 
-export async function toggleTimer(taskId: string) {
+export async function toggleTimer(taskId: string, description?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado." }
@@ -48,7 +48,8 @@ export async function toggleTimer(taskId: string) {
         task_id: taskId,
         user_id: user.id,
         is_timer: true,
-        start_time: new Date().toISOString()
+        start_time: new Date().toISOString(),
+        description: description || null
       })
 
     if (insertError) return { error: insertError.message }

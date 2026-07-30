@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { CreateOrganizationModal } from "@/features/organizations/components/CreateOrganizationModal"
+import { DeleteOrganizationButton } from "@/features/organizations/components/DeleteOrganizationButton"
 
 export default async function OrganizationsPage() {
   const supabase = await createClient()
@@ -31,9 +32,12 @@ export default async function OrganizationsPage() {
             </div>
           ) : (
             organizations?.map((org) => (
-              <Card key={org.id}>
+              <Card key={org.id} className="relative group">
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <DeleteOrganizationButton organizationId={org.id} organizationName={org.name} />
+                </div>
                 <CardHeader>
-                  <CardTitle>{org.name}</CardTitle>
+                  <CardTitle className="pr-8">{org.name}</CardTitle>
                   <CardDescription>{org.description || "Sem descrição"}</CardDescription>
                 </CardHeader>
               </Card>

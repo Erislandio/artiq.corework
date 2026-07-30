@@ -98,6 +98,8 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   // State de horas manuais
   const [showManualTime, setShowManualTime] = useState(false);
   const [manualTimeValue, setManualTimeValue] = useState("");
+  const [manualTimeDescription, setManualTimeDescription] = useState("");
+  const [timerDescription, setTimerDescription] = useState("");
 
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
@@ -216,7 +218,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
   const handleToggleTimer = async () => {
     setTimerError(null);
-    const res = await toggleTimer(task.id);
+    const res = await toggleTimer(task.id, timerDescription);
 
     if (res?.error) {
       setTimerError(res.error);
@@ -226,6 +228,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
         setTimerSeconds(0);
         loadTaskDetails(); // Recarregar para mostrar no histórico
       }
+      setTimerDescription(""); // Clear description after starting
     }
   };
 
@@ -325,8 +328,9 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const handleSubmitManualTime = async () => {
     const min = parseInt(manualTimeValue);
     if (!isNaN(min) && min > 0) {
-      await addManualTime(task.id, min, "Horas adicionadas manualmente");
+      await addManualTime(task.id, min, manualTimeDescription || "Horas adicionadas manualmente");
       setManualTimeValue("");
+      setManualTimeDescription("");
       setShowManualTime(false);
       loadTaskDetails();
     }
@@ -941,6 +945,18 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
               <div className="text-4xl font-mono mb-5 tracking-tight font-light text-zinc-800 dark:text-zinc-100">
                 {formatTime(timerSeconds)}
               </div>
+              
+              {!isTimerRunning && (
+                <div className="w-full mb-4 animate-in fade-in zoom-in-95">
+                  <Input
+                    placeholder="O que você vai fazer agora?"
+                    value={timerDescription}
+                    onChange={(e) => setTimerDescription(e.target.value)}
+                    className="h-8 text-sm text-center bg-zinc-50 dark:bg-zinc-900/50"
+                  />
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button
                   size="lg"
@@ -974,11 +990,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
             </div>
 
             {showManualTime ? (
-              <div className="p-3 bg-white dark:bg-zinc-950 border rounded-lg space-y-2 animate-in fade-in zoom-in-95">
-                <span className="text-xs font-medium text-zinc-500">
-                  Minutos trabalhados:
-                </span>
-                <div className="flex gap-2">
+              <div className="p-3 bg-white dark:bg-zinc-950 border rounded-lg space-y-3 animate-in fade-in zoom-in-95">
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-zinc-500">
+                    Minutos trabalhados:
+                  </span>
                   <Input
                     type="number"
                     placeholder="Ex: 120"
@@ -986,18 +1002,35 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     onChange={(e) => setManualTimeValue(e.target.value)}
                     className="h-8 text-sm"
                   />
-                  <Button size="sm" onClick={handleSubmitManualTime}>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-zinc-500">
+                    Descrição (Opcional):
+                  </span>
+                  <Input
+                    placeholder="O que você fez?"
+                    value={manualTimeDescription}
+                    onChange={(e) => setManualTimeDescription(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-zinc-400 h-8"
+                    onClick={() => {
+                      setShowManualTime(false)
+                      setManualTimeValue("")
+                      setManualTimeDescription("")
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button size="sm" onClick={handleSubmitManualTime} className="w-full h-8">
                     Salvar
                   </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-xs text-zinc-400 h-6"
-                  onClick={() => setShowManualTime(false)}
-                >
-                  Cancelar
-                </Button>
               </div>
             ) : (
               <Button
