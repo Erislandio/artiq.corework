@@ -45,7 +45,12 @@ export function GlobalTimer() {
       .channel("global-timer")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "time_logs" },
+        { 
+          event: "*", 
+          schema: "public", 
+          table: "time_logs" 
+          // filter: `user_id=eq.${user.id}` // Se quiséssemos filtrar apenas para o user atual
+        },
         () => {
           fetchActiveTimer();
         }

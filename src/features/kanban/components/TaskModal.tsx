@@ -86,7 +86,9 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const [projectMembers, setProjectMembers] = useState<any[]>([]);
   const [projectColumns, setProjectColumns] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'comments' | 'timelogs' | 'attachments' | 'history'>('comments');
+  const [activeTab, setActiveTab] = useState<
+    "comments" | "timelogs" | "attachments" | "history"
+  >("comments");
 
   // States de edição
   const [description, setDescription] = useState("");
@@ -155,16 +157,24 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
     if (taskData) {
       setDetailedTask(taskData);
-      setDescription(taskData.description || "");
+      // Só atualiza a descrição se não estiver editando para não perder o que foi digitado (apesar de loadTaskDetails rodar depois de salvar)
+      if (!isSavingDesc) {
+        setDescription(taskData.description || "");
+      }
 
       // Check if timer is running for this user
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
+      // Usa o user local já carregado, evitando chamadas repetidas
+      let currentId = currentUserId;
+      if (!currentId) {
+        const { data: authData } = await supabase.auth.getUser();
+        currentId = authData.user?.id || null;
+        if (currentId) setCurrentUserId(currentId);
+      }
+
+      if (currentId) {
         const activeTimer = taskData.time_logs?.find(
-          (log: any) => log.user_id === user.id && log.is_timer && !log.end_time
+          (log: any) =>
+            log.user_id === currentId && log.is_timer && !log.end_time
         );
         if (activeTimer) {
           setIsTimerRunning(true);
@@ -181,16 +191,17 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
       }
     }
 
-    // Fetch Users to Assign (limite de 20 para performance, a busca do Command filtra no cliente)
-    const { data: allUsers } = await supabase
-      .from("users")
-      .select("*")
-      .limit(20);
+    // Fetch Users to Assign (only if not loaded yet)
+    if (projectMembers.length === 0) {
+      const { data: allUsers } = await supabase
+        .from("users")
+        .select("*")
+        .limit(20);
+      if (allUsers) setProjectMembers(allUsers);
+    }
 
-    if (allUsers) setProjectMembers(allUsers);
-
-    // Fetch Columns for Status Change
-    if (taskData.project_id) {
+    // Fetch Columns for Status Change (only if not loaded yet)
+    if (projectColumns.length === 0 && taskData?.project_id) {
       const { data: cols } = await supabase
         .from("columns")
         .select("*")
@@ -328,7 +339,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const handleSubmitManualTime = async () => {
     const min = parseInt(manualTimeValue);
     if (!isNaN(min) && min > 0) {
-      await addManualTime(task.id, min, manualTimeDescription || "Horas adicionadas manualmente");
+      await addManualTime(
+        task.id,
+        min,
+        manualTimeDescription || "Horas adicionadas manualmente"
+      );
       setManualTimeValue("");
       setManualTimeDescription("");
       setShowManualTime(false);
@@ -466,49 +481,57 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     )}
                   </div>
                 </div>
-                    {/* Tabs Navigation */}
+                {/* Tabs Navigation */}
                 <div className="flex items-center gap-6 border-b border-zinc-200 dark:border-zinc-800">
                   <button
-                    onClick={() => setActiveTab('comments')}
-                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === 'comments' ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    onClick={() => setActiveTab("comments")}
+                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === "comments" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
                   >
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-4 h-4" /> Comentários
                     </div>
-                    {activeTab === 'comments' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />}
+                    {activeTab === "comments" && (
+                      <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
+                    )}
                   </button>
                   <button
-                    onClick={() => setActiveTab('timelogs')}
-                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === 'timelogs' ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    onClick={() => setActiveTab("timelogs")}
+                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === "timelogs" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
                   >
                     <div className="flex items-center gap-2">
                       <Timer className="w-4 h-4" /> Horas Logadas
                     </div>
-                    {activeTab === 'timelogs' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />}
+                    {activeTab === "timelogs" && (
+                      <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
+                    )}
                   </button>
                   <button
-                    onClick={() => setActiveTab('attachments')}
-                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === 'attachments' ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    onClick={() => setActiveTab("attachments")}
+                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === "attachments" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
                   >
                     <div className="flex items-center gap-2">
                       <Paperclip className="w-4 h-4" /> Anexos
                     </div>
-                    {activeTab === 'attachments' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />}
+                    {activeTab === "attachments" && (
+                      <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
+                    )}
                   </button>
                   <button
-                    onClick={() => setActiveTab('history')}
-                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === 'history' ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    onClick={() => setActiveTab("history")}
+                    className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === "history" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"}`}
                   >
                     <div className="flex items-center gap-2">
                       <History className="w-4 h-4" /> Histórico
                     </div>
-                    {activeTab === 'history' && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />}
+                    {activeTab === "history" && (
+                      <span className="absolute bottom-0 left-0 w-full h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-t-md" />
+                    )}
                   </button>
                 </div>
 
                 {/* Tabs Content */}
                 <div className="pt-2">
-                  {activeTab === 'attachments' && (
+                  {activeTab === "attachments" && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center justify-between text-zinc-700 dark:text-zinc-300 font-semibold">
                         <div className="flex items-center gap-2">
@@ -553,52 +576,73 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                         </div>
                       ) : (
                         <div className="text-sm text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 p-6 rounded-lg text-center border border-dashed border-zinc-200 dark:border-zinc-800">
-                          Nenhum anexo encontrado. Clique em "Adicionar Anexo" para enviar um arquivo.
+                          Nenhum anexo encontrado. Clique em "Adicionar Anexo"
+                          para enviar um arquivo.
                         </div>
                       )}
                     </div>
                   )}
 
-                  {activeTab === 'timelogs' && (
+                  {activeTab === "timelogs" && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 font-semibold mb-4">
                         <Timer className="w-5 h-5" />
                         Horas Registradas
                       </div>
-                      
-                      {detailedTask.time_logs && detailedTask.time_logs.length > 0 ? (
+
+                      {detailedTask.time_logs &&
+                      detailedTask.time_logs.length > 0 ? (
                         <div className="space-y-3">
                           {[...detailedTask.time_logs]
-                            .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+                            .sort(
+                              (a: any, b: any) =>
+                                new Date(b.start_time).getTime() -
+                                new Date(a.start_time).getTime()
+                            )
                             .map((log: any) => (
-                            <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800">
-                              <Avatar className="w-8 h-8">
-                                <AvatarImage src={log.user?.avatar} />
-                                <AvatarFallback>{log.user?.name?.charAt(0) || "U"}</AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <p className="text-sm font-semibold">{log.user?.name}</p>
-                                    <p className="text-xs text-zinc-500">
-                                      {format(new Date(log.start_time), "dd MMM yyyy 'às' HH:mm", { locale: ptBR })}
+                              <div
+                                key={log.id}
+                                className="flex items-start gap-3 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800"
+                              >
+                                <Avatar className="w-8 h-8">
+                                  <AvatarImage src={log.user?.avatar} />
+                                  <AvatarFallback>
+                                    {log.user?.name?.charAt(0) || "U"}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="text-sm font-semibold">
+                                        {log.user?.name}
+                                      </p>
+                                      <p className="text-xs text-zinc-500">
+                                        {format(
+                                          new Date(log.start_time),
+                                          "dd MMM yyyy 'às' HH:mm",
+                                          { locale: ptBR }
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md text-xs font-mono font-medium">
+                                      <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                                      {log.duration_minutes ? (
+                                        `${Math.floor(log.duration_minutes / 60)}h ${log.duration_minutes % 60}m`
+                                      ) : (
+                                        <span className="text-orange-500 animate-pulse">
+                                          Rodando...
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {log.description && (
+                                    <p className="text-sm mt-2 text-zinc-600 dark:text-zinc-400 italic">
+                                      "{log.description}"
                                     </p>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-md text-xs font-mono font-medium">
-                                    <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                                    {log.duration_minutes ? (
-                                      `${Math.floor(log.duration_minutes / 60)}h ${log.duration_minutes % 60}m`
-                                    ) : (
-                                      <span className="text-orange-500 animate-pulse">Rodando...</span>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
-                                {log.description && (
-                                  <p className="text-sm mt-2 text-zinc-600 dark:text-zinc-400 italic">"{log.description}"</p>
-                                )}
                               </div>
-                            </div>
-                          ))}
+                            ))}
                         </div>
                       ) : (
                         <div className="text-sm text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 p-6 rounded-lg text-center border border-dashed border-zinc-200 dark:border-zinc-800">
@@ -608,25 +652,28 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     </div>
                   )}
 
-                  {activeTab === 'history' && (
+                  {activeTab === "history" && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex flex-col items-center justify-center p-12 text-zinc-500 bg-zinc-50 dark:bg-zinc-900/50 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-800">
                         <History className="w-8 h-8 mb-3 text-zinc-300" />
-                        <p className="font-semibold text-zinc-600 dark:text-zinc-400">Em Breve</p>
+                        <p className="font-semibold text-zinc-600 dark:text-zinc-400">
+                          Em Breve
+                        </p>
                         <p className="text-sm text-center max-w-sm mt-1">
-                          O histórico de alterações desta tarefa estará disponível nas próximas atualizações.
+                          O histórico de alterações desta tarefa estará
+                          disponível nas próximas atualizações.
                         </p>
                       </div>
                     </div>
                   )}
 
-                  {activeTab === 'comments' && (
+                  {activeTab === "comments" && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 font-semibold mb-4">
                         <MessageSquare className="w-5 h-5" />
                         Comentários
                       </div>
-                      
+
                       <form onSubmit={handleAddComment} className="flex gap-2">
                         <Avatar className="w-8 h-8">
                           {user?.avatar && (
@@ -654,99 +701,103 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                       </form>
 
                       <div className="space-y-4 pt-4">
-                        {detailedTask.comments?.reverse()?.map((comment: any) => (
-                          <div key={comment.id} className="flex gap-3">
-                            <Avatar className="w-8 h-8">
-                              {comment.user?.avatar && (
-                                <AvatarImage
-                                  src={comment.user.avatar}
-                                  alt={comment.user.name}
-                                />
-                              )}
-                              <AvatarFallback>
-                                {comment.user?.name?.charAt(0) || "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 bg-zinc-100 dark:bg-zinc-900 rounded-lg p-3 group">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-semibold text-sm">
-                                  {comment.user?.name}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-zinc-500">
-                                    {format(
-                                      new Date(comment.created_at),
-                                      "dd 'de' MMM, HH:mm",
-                                      { locale: ptBR }
-                                    )}
-                                  </span>
-                                  {comment.user_id === currentUserId && (
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                        onClick={() => {
-                                          setEditingCommentId(comment.id);
-                                          setEditCommentContent(comment.content);
-                                        }}
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 text-zinc-400 hover:text-red-500"
-                                        onClick={() =>
-                                          handleDeleteComment(comment.id)
-                                        }
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              {editingCommentId === comment.id ? (
-                                <div className="mt-2 space-y-2">
-                                  <Textarea
-                                    value={editCommentContent}
-                                    onChange={(e) =>
-                                      setEditCommentContent(e.target.value)
-                                    }
-                                    className="min-h-[80px] bg-white dark:bg-zinc-950 text-sm"
-                                    autoFocus
+                        {detailedTask.comments
+                          ?.reverse()
+                          ?.map((comment: any) => (
+                            <div key={comment.id} className="flex gap-3">
+                              <Avatar className="w-8 h-8">
+                                {comment.user?.avatar && (
+                                  <AvatarImage
+                                    src={comment.user.avatar}
+                                    alt={comment.user.name}
                                   />
+                                )}
+                                <AvatarFallback>
+                                  {comment.user?.name?.charAt(0) || "U"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 bg-zinc-100 dark:bg-zinc-900 rounded-lg p-3 group">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-semibold text-sm">
+                                    {comment.user?.name}
+                                  </span>
                                   <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={() =>
-                                        handleSaveEditComment(comment.id)
-                                      }
-                                      disabled={!editCommentContent.trim()}
-                                    >
-                                      Salvar
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => {
-                                        setEditingCommentId(null);
-                                        setEditCommentContent("");
-                                      }}
-                                    >
-                                      Cancelar
-                                    </Button>
+                                    <span className="text-xs text-zinc-500">
+                                      {format(
+                                        new Date(comment.created_at),
+                                        "dd 'de' MMM, HH:mm",
+                                        { locale: ptBR }
+                                      )}
+                                    </span>
+                                    {comment.user_id === currentUserId && (
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                          onClick={() => {
+                                            setEditingCommentId(comment.id);
+                                            setEditCommentContent(
+                                              comment.content
+                                            );
+                                          }}
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-6 w-6 text-zinc-400 hover:text-red-500"
+                                          onClick={() =>
+                                            handleDeleteComment(comment.id)
+                                          }
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                                  {comment.content}
-                                </p>
-                              )}
+                                {editingCommentId === comment.id ? (
+                                  <div className="mt-2 space-y-2">
+                                    <Textarea
+                                      value={editCommentContent}
+                                      onChange={(e) =>
+                                        setEditCommentContent(e.target.value)
+                                      }
+                                      className="min-h-[80px] bg-white dark:bg-zinc-950 text-sm"
+                                      autoFocus
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        onClick={() =>
+                                          handleSaveEditComment(comment.id)
+                                        }
+                                        disabled={!editCommentContent.trim()}
+                                      >
+                                        Salvar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setEditingCommentId(null);
+                                          setEditCommentContent("");
+                                        }}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
+                                    {comment.content}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
                       </div>
                     </div>
                   )}
@@ -945,7 +996,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
               <div className="text-4xl font-mono mb-5 tracking-tight font-light text-zinc-800 dark:text-zinc-100">
                 {formatTime(timerSeconds)}
               </div>
-              
+
               {!isTimerRunning && (
                 <div className="w-full mb-4 animate-in fade-in zoom-in-95">
                   <Input
@@ -1020,14 +1071,18 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     size="sm"
                     className="w-full text-xs text-zinc-400 h-8"
                     onClick={() => {
-                      setShowManualTime(false)
-                      setManualTimeValue("")
-                      setManualTimeDescription("")
+                      setShowManualTime(false);
+                      setManualTimeValue("");
+                      setManualTimeDescription("");
                     }}
                   >
                     Cancelar
                   </Button>
-                  <Button size="sm" onClick={handleSubmitManualTime} className="w-full h-8">
+                  <Button
+                    size="sm"
+                    onClick={handleSubmitManualTime}
+                    className="w-full h-8"
+                  >
                     Salvar
                   </Button>
                 </div>
