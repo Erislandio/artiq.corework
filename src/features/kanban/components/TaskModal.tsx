@@ -56,6 +56,7 @@ import {
   updateTaskDetails
 } from "../actions/task-details";
 import { addManualTime, toggleTimer } from "../actions/time-logs";
+import { notifyAttachmentUploaded } from "@/features/notifications/actions/notifications";
 
 interface TaskModalProps {
   task: Task | null;
@@ -270,6 +271,8 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
         file_type: file.type,
         file_size: file.size
       });
+      // Notificar responsáveis sobre o novo anexo
+      await notifyAttachmentUploaded(task.id, file.name);
       loadTaskDetails();
     }
   };
@@ -311,7 +314,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
             </DialogHeader>
           </div>
 
-          <ScrollArea className="flex-1 p-6 pt-0">
+          <ScrollArea className="flex-1 p-6 pt-0 overflow-scroll">
             {loading && !detailedTask ? (
               <div className="text-zinc-500">Carregando detalhes...</div>
             ) : detailedTask ? (

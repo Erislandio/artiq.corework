@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Bell, CheckCheck, Clock, MessageSquare, CheckCircle, Info } from "lucide-react"
+import { Bell, CheckCheck, Clock, MessageSquare, CheckCircle, Info, Paperclip, ArrowRightCircle, PenLine } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -65,6 +65,12 @@ export function NotificationsNav() {
         return <CheckCircle className="w-4 h-4 text-emerald-500" />
       case "comment":
         return <MessageSquare className="w-4 h-4 text-blue-500" />
+      case "status_changed":
+        return <ArrowRightCircle className="w-4 h-4 text-purple-500" />
+      case "task_updated":
+        return <PenLine className="w-4 h-4 text-amber-500" />
+      case "attachment":
+        return <Paperclip className="w-4 h-4 text-orange-500" />
       default:
         return <Info className="w-4 h-4 text-zinc-500" />
     }

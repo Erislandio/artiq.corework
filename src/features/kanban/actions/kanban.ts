@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { notifyTaskAssignees } from "@/features/notifications/actions/notifications"
 
 export async function updateTaskPosition(
   taskId: string,
@@ -13,6 +14,13 @@ export async function updateTaskPosition(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado." }
 
+  // Buscar coluna antiga antes de atualizar
+  const { data: oldTask } = await supabase
+    .from("tasks")
+    .select("column_id")
+    .eq("id", taskId)
+    .single()
+
   const { error } = await supabase
     .from("tasks")
     .update({ column_id: newColumnId, position: newPosition })
@@ -20,6 +28,32 @@ export async function updateTaskPosition(
 
   if (error) {
     return { error: error.message }
+  }
+
+  // Notificar se a coluna mudou (mudança de status)
+  if (oldTask && oldTask.column_id !== newColumnId) {
+    const { data: newColumn } = await supabase
+      .from("columns")
+      .select("title")
+      .eq("id", newColumnId)
+      .single()
+
+    const { data: profile } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", user.id)
+      .single()
+
+    const userName = profile?.name || "Alguém"
+    const columnName = newColumn?.title || "outra coluna"
+
+    await notifyTaskAssignees({
+      taskId,
+      excludeUserId: user.id,
+      title: "Status alterado",
+      message: `${userName} moveu a tarefa para "${columnName}"`,
+      type: "status_changed"
+    })
   }
 
   return { success: true }
