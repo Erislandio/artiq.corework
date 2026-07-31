@@ -44,9 +44,61 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editColumnTitle, setEditColumnTitle] = useState("");
 
+  function getContrastTextColor(hexColor?: string) {
+    if (!hexColor) return "#ffffff";
+    const hex = hexColor.replace("#", "");
+    if (hex.length !== 6) return "#ffffff";
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 128 ? "#0f172a" : "#ffffff";
+  }
+
+  const handleTaskUpdated = (updatedTask: Task) => {
+    setColumns((prevColumns) =>
+      prevColumns.map((col) => {
+        const hasTaskInCol = col.tasks?.some((t) => t.id === updatedTask.id);
+        const isTargetCol = col.id === updatedTask.column_id;
+
+        if (isTargetCol && !hasTaskInCol) {
+          return {
+            ...col,
+            tasks: [...(col.tasks || []), updatedTask]
+          };
+        } else if (!isTargetCol && hasTaskInCol) {
+          return {
+            ...col,
+            tasks: (col.tasks || []).filter((t) => t.id !== updatedTask.id)
+          };
+        } else if (isTargetCol && hasTaskInCol) {
+          return {
+            ...col,
+            tasks: col.tasks?.map((t) =>
+              t.id === updatedTask.id ? { ...t, ...updatedTask } : t
+            )
+          };
+        }
+        return col;
+      })
+    );
+  };
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+
+  const handleCloseModal = (isOpen: boolean) => {
+    if (!isOpen) {
+      setActiveTask(null);
+      if (searchParams.get("taskId")) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete("taskId");
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      }
+    }
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -63,11 +115,11 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
           }
         }
       }
-      if (foundTask) {
+      if (foundTask && (!activeTask || activeTask.id !== foundTask.id)) {
         setActiveTask(foundTask as unknown as Task);
       }
     }
-  }, [initialColumns, searchParams, pathname, router]);
+  }, [initialColumns, searchParams, pathname, router, activeTask]);
 
   function onDragEnd(result: DropResult) {
     const { destination, source, type, draggableId } = result;
@@ -357,9 +409,26 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
                                       {task.title}
                                     </p>
 
-                                    <p className="text-xs font-medium leading-tight">
+                                    <p className="text-xs font-medium leading-tight text-zinc-500">
                                       {`${task.description ? task.description.slice(0, 50) + "..." : "Sem descrição"}`}
                                     </p>
+
+                                    {task.tags && task.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 pt-1">
+                                        {task.tags.map((t: any) => (
+                                          <span
+                                            key={t.tag.id}
+                                            className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide"
+                                            style={{
+                                              backgroundColor: t.tag.color,
+                                              color: getContrastTextColor(t.tag.color)
+                                            }}
+                                          >
+                                            {t.tag.name}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
 
                                     <div className="flex items-center justify-between pt-1">
                                       <div className="flex items-center gap-1.5">
@@ -501,7 +570,8 @@ export function KanbanBoard({ projectId, initialColumns }: KanbanBoardProps) {
       <TaskModal
         task={activeTask}
         open={!!activeTask}
-        onOpenChange={(isOpen) => !isOpen && setActiveTask(null)}
+        onOpenChange={handleCloseModal}
+        onTaskUpdated={handleTaskUpdated}
       />
     </DragDropContext>
   );

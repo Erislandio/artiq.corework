@@ -15,6 +15,7 @@ import {
   Pencil,
   Play,
   Square,
+  Tag as TagIcon,
   Timer,
   Trash2,
   UserPlus,
@@ -56,13 +57,21 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { notifyAttachmentUploaded } from "@/features/notifications/actions/notifications";
 import { createClient } from "@/lib/supabase/client";
-import { Task, User } from "@/types";
+import { Tag, Task, User } from "@/types";
 import { updateTaskStatus } from "../actions/kanban";
 import {
   createSubtask,
   deleteSubtask,
   toggleSubtask
 } from "../actions/subtasks";
+import {
+  getProjectTags,
+  createTag,
+  assignTagToTask,
+  removeTagFromTask,
+  updateTag,
+  deleteTag
+} from "../actions/tags";
 import {
   addComment,
   archiveTask,
@@ -74,13 +83,38 @@ import {
 } from "../actions/task-details";
 import { addManualTime, toggleTimer, deleteTimeLog } from "../actions/time-logs";
 
+const PRESET_TAG_COLORS = [
+  "#3b82f6", // Blue
+  "#10b981", // Emerald
+  "#ef4444", // Red
+  "#f59e0b", // Amber
+  "#8b5cf6", // Purple
+  "#ec4899", // Pink
+  "#06b6d4", // Cyan
+  "#f97316", // Orange
+  "#64748b", // Slate
+  "#6366f1"  // Indigo
+];
+
+function getContrastTextColor(hexColor?: string) {
+  if (!hexColor) return "#ffffff";
+  const hex = hexColor.replace("#", "");
+  if (hex.length !== 6) return "#ffffff";
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 128 ? "#0f172a" : "#ffffff";
+}
+
 interface TaskModalProps {
   task: Task | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onTaskUpdated?: (updatedTask: Task) => void;
 }
 
-export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
+export function TaskModal({ task, open, onOpenChange, onTaskUpdated }: TaskModalProps) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerError, setTimerError] = useState<string | null>(null);
@@ -93,6 +127,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   const [detailedTask, setDetailedTask] = useState<any>(null);
   const [projectMembers, setProjectMembers] = useState<any[]>([]);
   const [projectColumns, setProjectColumns] = useState<any[]>([]);
+  const [projectTags, setProjectTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "comments" | "timelogs" | "attachments" | "history" | "subtasks"
@@ -115,6 +150,13 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
   const [newSubtask, setNewSubtask] = useState("");
   const [timerDescription, setTimerDescription] = useState("");
+
+  // States de badges
+  const [newBadgeName, setNewBadgeName] = useState("");
+  const [newBadgeColor, setNewBadgeColor] = useState("#3b82f6");
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [editTagColor, setEditTagColor] = useState("#3b82f6");
 
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
@@ -141,12 +183,12 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
   }, []);
 
   useEffect(() => {
-    if (open && task) {
+    if (open && task?.id) {
       loadTaskDetails();
-    } else {
+    } else if (!open) {
       setDetailedTask(null);
     }
-  }, [open, task]);
+  }, [open, task?.id]);
 
   async function loadTaskDetails() {
     if (!task) return;
@@ -160,6 +202,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
         *,
         creator:users!tasks_creator_id_fkey(*),
         assignees:task_assignees(user:users(*)),
+        tags:task_tags(tag:tags(*)),
         comments:task_comments(*, user:users(id, name, avatar)),
         attachments:task_attachments(*),
         subtasks:subtasks(*),
@@ -172,6 +215,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
 
     if (taskData) {
       setDetailedTask(taskData);
+      onTaskUpdated?.(taskData as Task);
       // Só atualiza a descrição se não estiver editando para não perder o que foi digitado (apesar de loadTaskDetails rodar depois de salvar)
       if (!isSavingDesc) {
         setDescription(taskData.description || "");
@@ -228,6 +272,12 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
       if (cols) setProjectColumns(cols);
     }
 
+    // Fetch Project Tags
+    if (taskData?.project_id) {
+      const pTags = await getProjectTags(taskData.project_id);
+      setProjectTags(pTags);
+    }
+
     setLoading(false);
   }
 
@@ -279,6 +329,59 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
       } else {
         loadTaskDetails();
       }
+    }
+  };
+
+
+
+  const handleCreateBadge = async () => {
+    if (!newBadgeName.trim() || !task) return;
+    const res = await createTag(task.project_id, newBadgeName.trim(), newBadgeColor);
+    if (res.success && res.tag) {
+      setProjectTags((prev) => [...prev, res.tag]);
+      await assignTagToTask(task.id, res.tag.id);
+      setNewBadgeName("");
+      setNewBadgeColor("#3b82f6");
+      await loadTaskDetails();
+    }
+  };
+
+  const handleToggleBadge = async (tagId: string, isAssigned: boolean) => {
+    if (!task) return;
+    if (isAssigned) {
+      await removeTagFromTask(task.id, tagId);
+    } else {
+      await assignTagToTask(task.id, tagId);
+    }
+    await loadTaskDetails();
+  };
+
+  const handleStartEditTag = (tag: Tag, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTagId(tag.id);
+    setEditTagName(tag.name);
+    setEditTagColor(tag.color);
+  };
+
+  const handleSaveEditTag = async (tagId: string) => {
+    if (!editTagName.trim()) return;
+    const res = await updateTag(tagId, editTagName.trim(), editTagColor);
+    if (res.success && res.tag) {
+      setProjectTags((prev) =>
+        prev.map((t) => (t.id === tagId ? res.tag : t))
+      );
+      setEditingTagId(null);
+      await loadTaskDetails();
+    }
+  };
+
+  const handleDeleteTag = async (tagId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const res = await deleteTag(tagId);
+    if (res.success) {
+      setProjectTags((prev) => prev.filter((t) => t.id !== tagId));
+      if (editingTagId === tagId) setEditingTagId(null);
+      await loadTaskDetails();
     }
   };
 
@@ -543,14 +646,7 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                     onValueChange={handleStatusChange}
                   >
                     <SelectTrigger className="h-7 text-xs bg-zinc-100 dark:bg-zinc-900 border-none">
-                      <SelectValue placeholder="Status">
-                        {(val: any) =>
-                          val
-                            ? projectColumns.find((c) => c.id === val)?.title ||
-                              val
-                            : "Status"
-                        }
-                      </SelectValue>
+                      <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                       {projectColumns.map((col) => (
@@ -1134,21 +1230,11 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
                   Prioridade
                 </span>
                 <Select
-                  defaultValue={detailedTask?.priority || task.priority}
+                  value={detailedTask?.priority || task.priority}
                   onValueChange={handleUpdatePriority}
                 >
                   <SelectTrigger className="bg-white dark:bg-zinc-950">
-                    <SelectValue>
-                      {(val: any) => {
-                        const labels: Record<string, string> = {
-                          Low: "Baixa",
-                          Medium: "Média",
-                          High: "Alta",
-                          Urgent: "Urgente"
-                        };
-                        return val ? labels[val] || val : "Prioridade";
-                      }}
-                    </SelectValue>
+                    <SelectValue placeholder="Prioridade" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Low">Baixa</SelectItem>
@@ -1194,6 +1280,216 @@ export function TaskModal({ task, open, onOpenChange }: TaskModalProps) {
               </div>
             </div>
           </div>
+
+          {/* Badges */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Badges
+              </h4>
+              <Popover>
+                <PopoverTrigger className="h-5 w-5 rounded-full inline-flex items-center justify-center text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors">
+                  <TagIcon className="w-3.5 h-3.5" />
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-3 space-y-4" align="end">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-xs tracking-wide uppercase text-zinc-600 dark:text-zinc-400">
+                      Gerenciar Badges
+                    </h4>
+                  </div>
+
+                  {/* Lista de tags existentes */}
+                  {projectTags.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-zinc-500">
+                        Badges do projeto
+                      </p>
+                      <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                        {projectTags.map((tag) => {
+                          const isAssigned = detailedTask?.tags?.some(
+                            (t: any) => t.tag.id === tag.id
+                          );
+                          const isEditing = editingTagId === tag.id;
+
+                          if (isEditing) {
+                            return (
+                              <div
+                                key={tag.id}
+                                className="p-2 border rounded-md bg-zinc-50 dark:bg-zinc-800/50 space-y-2"
+                              >
+                                <Input
+                                  value={editTagName}
+                                  onChange={(e) => setEditTagName(e.target.value)}
+                                  className="h-7 text-xs"
+                                  placeholder="Nome da badge"
+                                />
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {PRESET_TAG_COLORS.map((c) => (
+                                    <button
+                                      key={c}
+                                      type="button"
+                                      onClick={() => setEditTagColor(c)}
+                                      className={`w-4 h-4 rounded-full transition-transform ${
+                                        editTagColor === c
+                                          ? "scale-125 ring-2 ring-offset-1 ring-zinc-400"
+                                          : "hover:scale-110"
+                                      }`}
+                                      style={{ backgroundColor: c }}
+                                    />
+                                  ))}
+                                  <Input
+                                    type="color"
+                                    value={editTagColor}
+                                    onChange={(e) => setEditTagColor(e.target.value)}
+                                    className="h-5 w-6 p-0 border-0 cursor-pointer"
+                                  />
+                                </div>
+                                <div className="flex items-center justify-end gap-1 pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => setEditingTagId(null)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => handleSaveEditTag(tag.id)}
+                                    disabled={!editTagName.trim()}
+                                  >
+                                    Salvar
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={tag.id}
+                              className="group flex items-center justify-between rounded px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleBadge(tag.id, !!isAssigned)
+                                }
+                                className="flex items-center gap-2 flex-1 text-left min-w-0"
+                              >
+                                <span
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded font-medium truncate"
+                                  style={{
+                                    backgroundColor: tag.color,
+                                    color: getContrastTextColor(tag.color)
+                                  }}
+                                >
+                                  {isAssigned && <Check className="w-3 h-3 shrink-0" />}
+                                  <span className="truncate">{tag.name}</span>
+                                </span>
+                              </button>
+                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleStartEditTag(tag, e)}
+                                  className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded"
+                                  title="Editar badge"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteTag(tag.id, e)}
+                                  className="p-1 text-zinc-400 hover:text-red-600 rounded"
+                                  title="Excluir badge do projeto"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Criar nova tag */}
+                  <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <p className="text-[11px] font-medium text-zinc-500">
+                      Criar nova badge
+                    </p>
+                    <Input
+                      value={newBadgeName}
+                      onChange={(e) => setNewBadgeName(e.target.value)}
+                      placeholder="Nome da badge"
+                      className="h-8 text-xs"
+                    />
+
+                    {/* Paleta de cores */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {PRESET_TAG_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setNewBadgeColor(c)}
+                          className={`w-4 h-4 rounded-full transition-transform ${
+                            newBadgeColor === c
+                              ? "scale-125 ring-2 ring-offset-1 ring-zinc-400"
+                              : "hover:scale-110"
+                          }`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                      <Input
+                        type="color"
+                        value={newBadgeColor}
+                        onChange={(e) => setNewBadgeColor(e.target.value)}
+                        className="h-5 w-6 p-0 border-0 cursor-pointer"
+                      />
+                    </div>
+
+                    <Button
+                      size="sm"
+                      className="w-full h-8 text-xs font-medium"
+                      onClick={handleCreateBadge}
+                      disabled={!newBadgeName.trim()}
+                    >
+                      Criar e Assinalar
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {detailedTask?.tags && detailedTask.tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {detailedTask.tags.map((t: any) => (
+                  <div
+                    key={t.tag.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shadow-sm transition-transform hover:scale-105"
+                    style={{
+                      backgroundColor: t.tag.color,
+                      color: getContrastTextColor(t.tag.color)
+                    }}
+                  >
+                    <span>{t.tag.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBadge(t.tag.id, true)}
+                      className="hover:bg-black/20 dark:hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                      title="Remover badge"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500">Nenhuma badge assinalada.</p>
+            )}
+          </div>
+          <div className="h-px bg-zinc-200 dark:bg-zinc-800" />
 
           {/* People */}
           <div className="space-y-4">

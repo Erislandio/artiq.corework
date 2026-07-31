@@ -30,7 +30,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       *,
       tasks (
         *,
-        assignees:task_assignees(user:users(*))
+        assignees:task_assignees(user:users(*)),
+        tags:task_tags(tag:tags(*))
       )
     `)
     .eq("project_id", id)

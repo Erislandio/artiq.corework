@@ -50,6 +50,14 @@ export interface Task {
   creator?: User;
   assignees?: { user: User }[];
   subtasks?: Subtask[];
+  tags?: { tag: Tag }[];
+}
+
+export interface Tag {
+  id: string;
+  project_id: string;
+  name: string;
+  color: string;
 }
 
 export interface Subtask {
