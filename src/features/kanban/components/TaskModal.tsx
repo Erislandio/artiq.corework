@@ -144,6 +144,7 @@ export function TaskModal({ task, open, onOpenChange, onTaskUpdated }: TaskModal
   const [showManualTime, setShowManualTime] = useState(false);
   const [manualTimeValue, setManualTimeValue] = useState("");
   const [manualTimeDescription, setManualTimeDescription] = useState("");
+  const [manualTimeDate, setManualTimeDate] = useState<string>("");
   const [activeSubtaskIdForTime, setActiveSubtaskIdForTime] = useState<
     string | undefined
   >(undefined);
@@ -577,10 +578,12 @@ export function TaskModal({ task, open, onOpenChange, onTaskUpdated }: TaskModal
         task.id,
         min,
         manualTimeDescription || "Horas adicionadas manualmente",
-        activeSubtaskIdForTime
+        activeSubtaskIdForTime,
+        manualTimeDate || undefined
       );
       setManualTimeValue("");
       setManualTimeDescription("");
+      setManualTimeDate("");
       setShowManualTime(false);
       setActiveSubtaskIdForTime(undefined);
       loadTaskDetails();
@@ -1748,6 +1751,18 @@ export function TaskModal({ task, open, onOpenChange, onTaskUpdated }: TaskModal
                 </div>
                 <div className="space-y-1">
                   <span className="text-xs font-medium text-zinc-500">
+                    Data:
+                  </span>
+                  <Input
+                    type="date"
+                    value={manualTimeDate || new Date().toISOString().split("T")[0]}
+                    onChange={(e) => setManualTimeDate(e.target.value)}
+                    className="h-8 text-sm"
+                    max={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-zinc-500">
                     Descrição (Opcional):
                   </span>
                   <Input
@@ -1766,6 +1781,7 @@ export function TaskModal({ task, open, onOpenChange, onTaskUpdated }: TaskModal
                       setShowManualTime(false);
                       setManualTimeValue("");
                       setManualTimeDescription("");
+                      setManualTimeDate("");
                       setActiveSubtaskIdForTime(undefined);
                     }}
                   >

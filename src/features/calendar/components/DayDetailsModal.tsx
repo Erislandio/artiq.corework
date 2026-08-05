@@ -17,11 +17,12 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
+import { format, formatISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useEffect, useState } from "react";
 import {
   addManualTimeForDate,
+  deleteTimeLog,
   getActiveTasks,
   getDailyTimeLogs
 } from "../actions";
@@ -49,6 +50,7 @@ export function DayDetailsModal({
   const [duration, setDuration] = useState("");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && date) {
@@ -65,7 +67,9 @@ export function DayDetailsModal({
   const loadDetails = async () => {
     if (!date) return;
     setLoading(true);
-    const data = await getDailyTimeLogs(userId, date.toISOString());
+    // Usar a data local (YYYY-MM-DD) para evitar problemas de fuso horário
+    const localDateStr = formatISO(date, { representation: "date" });
+    const data = await getDailyTimeLogs(userId, `${localDateStr}T12:00:00`);
     setLogs(data);
     setLoading(false);
   };
@@ -89,11 +93,13 @@ export function DayDetailsModal({
 
     setIsSubmitting(true);
     const mins = parseInt(duration);
+    // Usar a data local (YYYY-MM-DD) para evitar problemas de fuso horário
+    const localDateStr = formatISO(date, { representation: "date" });
     await addManualTimeForDate(
       selectedTask,
       mins,
       description,
-      date.toISOString()
+      `${localDateStr}T12:00:00`
     );
     setIsSubmitting(false);
 
@@ -101,6 +107,15 @@ export function DayDetailsModal({
     setDuration("");
     setDescription("");
 
+    loadDetails();
+    onTimeAdded(); // atualizar o grid
+  };
+
+  const handleDelete = async (logId: string) => {
+    if (!window.confirm("Deseja remover este registro de horas?")) return;
+    setDeletingId(logId);
+    await deleteTimeLog(logId);
+    setDeletingId(null);
     loadDetails();
     onTimeAdded(); // atualizar o grid
   };
@@ -133,15 +148,37 @@ export function DayDetailsModal({
                 {logs.map((log) => (
                   <div
                     key={log.id}
-                    className="p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-100 dark:border-zinc-800"
+                    className="p-3 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-100 dark:border-zinc-800 group"
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-sm">
+                      <span className="font-medium text-sm flex-1 mr-2">
                         {log.task?.title || "Tarefa desconhecida"}
                       </span>
-                      <span className="font-bold text-orange-600 dark:text-orange-500 bg-orange-100 dark:bg-orange-950 px-2 py-0.5 rounded text-xs">
-                        {formatDuration(log.duration_minutes)}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-bold text-orange-600 dark:text-orange-500 bg-orange-100 dark:bg-orange-950 px-2 py-0.5 rounded text-xs">
+                          {formatDuration(log.duration_minutes)}
+                        </span>
+                        <button
+                          onClick={() => handleDelete(log.id)}
+                          disabled={deletingId === log.id}
+                          title="Remover registro"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded hover:bg-red-100 dark:hover:bg-red-950 text-zinc-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40"
+                        >
+                          {deletingId === log.id ? (
+                            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6l-1 14H6L5 6"/>
+                              <path d="M10 11v6M14 11v6"/>
+                              <path d="M9 6V4h6v2"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <div className="text-xs text-zinc-500 mb-2">
                       Projeto: {log.task?.project?.name}

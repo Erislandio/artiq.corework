@@ -104,6 +104,21 @@ export async function addManualTimeForDate(taskId: string, durationMinutes: numb
   return { success: true }
 }
 
+export async function deleteTimeLog(logId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: "Não autenticado" }
+
+  const { error } = await supabase
+    .from("time_logs")
+    .delete()
+    .eq("id", logId)
+    .eq("user_id", user.id) // Garante que só o dono pode deletar
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
 export async function getAdminMonthlyTimeLogs(year: number, month: number, projectId?: string, orgId?: string) {
   const supabase = await createClient()
 

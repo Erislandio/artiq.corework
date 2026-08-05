@@ -58,13 +58,24 @@ export async function toggleTimer(taskId: string, description?: string, subtaskI
   }
 }
 
-export async function addManualTime(taskId: string, durationMinutes: number, description: string, subtaskId?: string) {
+export async function addManualTime(taskId: string, durationMinutes: number, description: string, subtaskId?: string, dateIso?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Não autenticado." }
 
-  const endTime = new Date()
-  const startTime = new Date(endTime.getTime() - durationMinutes * 60000)
+  let endTime: Date
+  let startTime: Date
+
+  if (dateIso) {
+    // Usar a data fornecida, fixando o horário ao meio-dia para evitar problemas de fuso
+    const targetDate = new Date(dateIso)
+    targetDate.setHours(12, 0, 0, 0)
+    endTime = new Date(targetDate.getTime())
+    startTime = new Date(endTime.getTime() - durationMinutes * 60000)
+  } else {
+    endTime = new Date()
+    startTime = new Date(endTime.getTime() - durationMinutes * 60000)
+  }
 
   const { error } = await supabase
     .from("time_logs")
